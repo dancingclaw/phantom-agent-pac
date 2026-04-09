@@ -1,60 +1,60 @@
-# Конфигурация и запуск
+# Configuration and Launch
 
-## Переменные окружения
+## Environment Variables
 
-### Обязательные
+### Required
 
-| Переменная | Описание |
+| Variable | Description |
 |---|---|
-| `OPENAI_API_KEY` | API-ключ провайдера |
-| `OPENAI_BASE_URL` | URL OpenAI-совместимого API (если не OpenAI) |
-| `MODEL_ID` | Имя модели (default: `gpt-4.1-2025-04-14`) |
+| `OPENAI_API_KEY` | Provider API key |
+| `OPENAI_BASE_URL` | OpenAI-compatible API URL (if not OpenAI) |
+| `MODEL_ID` | Model name (default: `gpt-4.1-2025-04-14`) |
 
-### Для лидерборда
+### For Leaderboard
 
-| Переменная | Описание |
+| Variable | Description |
 |---|---|
-| `BITGN_API_KEY` | Ключ для лидерборда BitGN |
-| `BITGN_RUN_NAME` | Имя прогона на лидерборде |
+| `BITGN_API_KEY` | BitGN leaderboard key |
+| `BITGN_RUN_NAME` | Run name on leaderboard |
 
-### Настройки агента
+### Agent Settings
 
-| Переменная | Default | Описание |
+| Variable | Default | Description |
 |---|---|---|
-| `AGENT_MAX_STEPS` | 30 | Макс. шагов ReAct loop на задачу |
-| `AGENT_MAX_TOKENS` | 4096 | Макс. токенов на ответ LLM |
-| `AGENT_REQUEST_TIMEOUT_SECONDS` | 60 | Таймаут запроса к LLM |
-| `AGENT_JSON_REPAIR_RETRIES` | 2 | Попытки починить невалидный JSON |
+| `AGENT_MAX_STEPS` | 30 | Max ReAct loop steps per task |
+| `AGENT_MAX_TOKENS` | 4096 | Max tokens per LLM response |
+| `AGENT_REQUEST_TIMEOUT_SECONDS` | 60 | LLM request timeout |
+| `AGENT_JSON_REPAIR_RETRIES` | 2 | Attempts to fix invalid JSON |
 | `AGENT_FASTPATH_MODE` | framed | `off` / `framed` / `all` |
-| `AGENT_USE_GBNF` | auto | GBNF grammar (для локальных моделей) |
-| `BENCHMARK_HOST` | https://api.bitgn.com | URL BitGN harness |
-| `BENCHMARK_ID` | bitgn/pac1-dev | ID бенчмарка |
-| `PCM_RETRY_ATTEMPTS` | 4 | Retries при transient ошибках runtime |
+| `AGENT_USE_GBNF` | auto | GBNF grammar (for local models) |
+| `BENCHMARK_HOST` | https://api.bitgn.com | BitGN harness URL |
+| `BENCHMARK_ID` | bitgn/pac1-dev | Benchmark ID |
+| `PCM_RETRY_ATTEMPTS` | 4 | Retries on transient runtime errors |
 
-## Команды запуска
+## Launch Commands
 
 ```bash
 cd pac1-py
 
-# Установка зависимостей
+# Install dependencies
 make sync
 
-# Полный прогон на лидерборд
+# Full leaderboard run
 OPENAI_API_KEY=... OPENAI_BASE_URL=... MODEL_ID=... BITGN_API_KEY=... make run
 
-# Тестовый прогон (playground, без лидерборда)
+# Test run (playground, no leaderboard)
 uv run python main.py t01 t03 t42
 
-# Прогон с максимальным использованием LLM
+# Run with maximum LLM usage
 AGENT_FASTPATH_MODE=off uv run python main.py
 
-# Прогон конкретной задачи для отладки
+# Run a specific task for debugging
 AGENT_FASTPATH_MODE=off uv run python main.py t42
 ```
 
-## Артефакты
+## Artifacts
 
-После прогона сохраняются в `benchmark-runs/`:
-- `latest_metrics.json` — полные метрики (totals + per-task)
-- `latest_metrics.csv` — CSV-выгрузка
-- `latest_full_run.txt` — полный лог (только для полных прогонов)
+After a run, saved in `benchmark-runs/`:
+- `latest_metrics.json` — full metrics (totals + per-task)
+- `latest_metrics.csv` — CSV export
+- `latest_full_run.txt` — full log (only for full runs)

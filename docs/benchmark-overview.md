@@ -1,103 +1,103 @@
-# Обзор бенчмарка BitGN PAC1
+# BitGN PAC1 Benchmark Overview
 
-## Что это
+## What It Is
 
-PAC1 — соревновательный бенчмарк от платформы BitGN. Оценивает способность LLM-агента выполнять задачи в изолированных виртуальных рантаймах (sandbox файловые системы).
+PAC1 is a competitive benchmark from the BitGN platform. It evaluates the ability of an LLM agent to perform tasks in isolated virtual runtimes (sandbox file systems).
 
-Агент подключается к BitGN harness, получает 43 задачи, решает каждую в своём sandbox, harness оценивает результат.
+The agent connects to the BitGN harness, receives 43 tasks, solves each one in its own sandbox, and the harness evaluates the result.
 
-## Протокол взаимодействия
+## Interaction Protocol
 
 ```
 BitGN Harness                         Agent
      │                                  │
-     │  ── get_benchmark ──────────►    │   (список задач + eval policy)
+     │  ── get_benchmark ──────────►    │   (task list + eval policy)
      │  ◄── benchmark metadata ─────    │
      │                                  │
-     │  ── start_run ──────────────►    │   (создание прогона на лидерборд)
+     │  ── start_run ──────────────►    │   (create run for leaderboard)
      │  ◄── run_id + trial_ids ─────    │
      │                                  │
-     │  ── start_trial(trial_id) ──►    │   (запуск задачи)
-     │  ◄── instruction + runtime_url   │   (текст задачи + URL sandbox)
+     │  ── start_trial(trial_id) ──►    │   (start task)
+     │  ◄── instruction + runtime_url   │   (task text + sandbox URL)
      │                                  │
-     │      Agent работает с runtime    │
+     │      Agent works with runtime    │
      │      (tree, list, read, write,   │
      │       search, find, delete,      │
      │       move, mkdir, context,      │
      │       report_completion)         │
      │                                  │
-     │  ── end_trial ──────────────►    │   (завершить + получить оценку)
+     │  ── end_trial ──────────────►    │   (finish + get score)
      │  ◄── score + score_detail ───    │
      │                                  │
-     │  ── submit_run ─────────────►    │   (отправить на лидерборд)
+     │  ── submit_run ─────────────►    │   (submit to leaderboard)
      │  ◄── RUN_STATE_EVALUATED ────    │
 ```
 
 ## Runtime (PCM)
 
-Каждая задача выполняется в изолированном файловом sandbox (`bitgn.vm.pcm`). Доступные операции:
+Each task is executed in an isolated file sandbox (`bitgn.vm.pcm`). Available operations:
 
-| Команда | Описание |
+| Command | Description |
 |---|---|
-| `context` | Текущее время sandbox (unixTime + ISO) |
-| `tree` | Дерево каталогов (root, level) |
-| `list` | Содержимое каталога |
-| `read` | Чтение файла (целиком или диапазон строк) |
-| `find` | Поиск файлов по имени |
-| `search` | Full-text поиск (regex) |
-| `write` | Создание/перезапись файла (целиком или диапазон строк) |
-| `delete` | Удаление файла или каталога |
-| `mkdir` | Создание каталога |
-| `move` | Перемещение/переименование |
-| `report_completion` | Завершение задачи с результатом |
+| `context` | Current sandbox time (unixTime + ISO) |
+| `tree` | Directory tree (root, level) |
+| `list` | Directory contents |
+| `read` | Read file (entire file or line range) |
+| `find` | Search files by name |
+| `search` | Full-text search (regex) |
+| `write` | Create/overwrite file (entire file or line range) |
+| `delete` | Delete file or directory |
+| `mkdir` | Create directory |
+| `move` | Move/rename |
+| `report_completion` | Complete task with result |
 
-## Типы workspace
+## Workspace Types
 
-Задачи выполняются в трёх типах workspace:
+Tasks are executed in three workspace types:
 
 ### knowledge_repo (t01-t09, t33, t42-t43)
 ```
-/00_inbox/          — входящие необработанные файлы
-/01_capture/        — каноничные захваченные источники
-/02_distill/        — синтез: cards/ + threads/
-/90_memory/         — конфигурация агента (Soul.md)
-/99_process/        — процессные документы
-/AGENTS.md          — правила workspace
+/00_inbox/          — incoming unprocessed files
+/01_capture/        — canonical captured sources
+/02_distill/        — synthesis: cards/ + threads/
+/90_memory/         — agent configuration (Soul.md)
+/99_process/        — process documents
+/AGENTS.md          — workspace rules
 ```
 
 ### typed_crm_fs (t10-t30, t34-t40)
 ```
-/accounts/          — JSON-записи аккаунтов
-/contacts/          — JSON-записи контактов
-/my-invoices/       — JSON-инвойсы
-/inbox/             — входящие сообщения
-/outbox/            — исходящие email (seq.json для нумерации)
-/docs/              — документация по каналам, workflow
-/opportunities/     — сделки
-/reminders/         — напоминания о follow-up
+/accounts/          — JSON account records
+/contacts/          — JSON contact records
+/my-invoices/       — JSON invoices
+/inbox/             — incoming messages
+/outbox/            — outgoing email (seq.json for numbering)
+/docs/              — documentation on channels, workflow
+/opportunities/     — deals
+/reminders/         — follow-up reminders
 ```
 
 ### purchase_ops (t31)
 ```
-/docs/              — документация workflow
-/processing/        — lanes обработки
-/purchases/         — записи покупок
+/docs/              — workflow documentation
+/processing/        — processing lanes
+/purchases/         — purchase records
 ```
 
-## Оценка
+## Scoring
 
-- Каждая задача: 0.00 или 1.00 (бинарная оценка)
-- Итоговый скор: среднее * 100%
-- Скорер проверяет конкретные артефакты в sandbox после завершения
-- `grounding_refs` в report_completion должны содержать точные пути к файлам
-- `message` должно содержать конкретный ответ с путями (для lookup-задач)
+- Each task: 0.00 or 1.00 (binary scoring)
+- Final score: average * 100%
+- The scorer checks specific artifacts in the sandbox after completion
+- `grounding_refs` in report_completion must contain exact file paths
+- `message` must contain a specific answer with paths (for lookup tasks)
 
-## Outcomes (исходы)
+## Outcomes
 
-| Outcome | Когда использовать |
+| Outcome | When to use |
 |---|---|
-| `OUTCOME_OK` | Задача выполнена, есть доказательства в sandbox |
-| `OUTCOME_DENIED_SECURITY` | Prompt injection, exfiltration, враждебный контент |
-| `OUTCOME_NONE_CLARIFICATION` | Запрос неоднозначен, нужно уточнение |
-| `OUTCOME_NONE_UNSUPPORTED` | Функция не поддерживается runtime |
-| `OUTCOME_ERR_INTERNAL` | Внутренняя ошибка агента |
+| `OUTCOME_OK` | Task completed, evidence exists in sandbox |
+| `OUTCOME_DENIED_SECURITY` | Prompt injection, exfiltration, hostile content |
+| `OUTCOME_NONE_CLARIFICATION` | Request is ambiguous, clarification needed |
+| `OUTCOME_NONE_UNSUPPORTED` | Feature not supported by runtime |
+| `OUTCOME_ERR_INTERNAL` | Internal agent error |

@@ -12,17 +12,17 @@ This subtree contains the PAC1 Python contest agent. Optimize for correctness, s
 
 ## Preferred Structure
 
-- `main.py`: benchmark orchestration only
-- `agent.py`: agent loop, typed tool schemas, formatting, and runtime dispatch
-
-If `agent.py` grows further, split by responsibility:
-
-- `config.py`: env parsing and defaults
-- `models.py`: request/response schemas for the LLM contract
-- `runtime.py`: PCM dispatch and response formatting
-- `loop.py`: planning/execution loop
-
-Do not split earlier than necessary. Small and direct is still the default.
+- `server.py`: FastAPI backend + SSE streaming + benchmark orchestration
+- `main_v2.py`: CLI benchmark runner (headless)
+- `agent_v2/agent.py`: agent creation, run loop with retry logic
+- `agent_v2/tools.py`: tool definitions (file ops, search, skills, completion)
+- `agent_v2/skills/`: 12 specialized skill prompts (hot-reloadable `.md` files)
+- `agent_v2/system_prompt.md`: system prompt (hot-reloadable)
+- `agent_v2/config.py`: env parsing and defaults
+- `agent_v2/runtime.py`: async PCM gRPC dispatch
+- `agent_v2/hooks.py`: live logging + token tracking
+- `agent_v2/db.py`: SQLite persistence
+- `dashboard/`: React + Vite frontend
 
 ## Implementation Rules
 

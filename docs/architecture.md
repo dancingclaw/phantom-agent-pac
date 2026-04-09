@@ -1,86 +1,86 @@
-# Архитектура агента
+# Agent Architecture
 
-## Тип: Гибрид (Deterministic Workflow + LLM ReAct)
+## Type: Hybrid (Deterministic Workflow + LLM ReAct)
 
-Агент — это НЕ чистый ReAct и НЕ чистый workflow. Это трёхуровневый гибрид, где 93% задач решаются детерминистически.
+The agent is NOT a pure ReAct and NOT a pure workflow. It is a three-level hybrid where 93% of tasks are solved deterministically.
 
-## Pipeline обработки задачи
+## Task Processing Pipeline
 
 ```
-Задача поступает
+Task arrives
         │
         ▼
 ┌──────────────────────┐
-│ 1. Pre-bootstrap     │ safety.py: regex на injection, deictic, truncated
-│    preflight         │ Если сработало → мгновенный ответ без LLM
+│ 1. Pre-bootstrap     │ safety.py: regex for injection, deictic, truncated
+│    preflight         │ If triggered → instant response without LLM
 └──────┬───────────────┘
-       │ не сработало
+       │ not triggered
        ▼
 ┌──────────────────────┐
 │ 2. Bootstrap         │ grounding.py: ls /, tree -L 2 /, read AGENTS.md, context
-│                      │ Определяет repository_profile и capabilities
+│                      │ Determines repository_profile and capabilities
 └──────┬───────────────┘
        │
        ▼
 ┌──────────────────────┐
-│ 3. Post-bootstrap    │ policy.py: проверка capabilities workspace
-│    preflight         │ Если unsupported → OUTCOME_NONE_UNSUPPORTED
+│ 3. Post-bootstrap    │ policy.py: workspace capabilities check
+│    preflight         │ If unsupported → OUTCOME_NONE_UNSUPPORTED
 └──────┬───────────────┘
-       │ не сработало
+       │ not triggered
        ▼
 ┌──────────────────────┐
-│ 4. Knowledge inbox   │ knowledge_repo.py: проверка suspicious inbox items
-│    security          │ Если injection в inbox → OUTCOME_DENIED_SECURITY
+│ 4. Knowledge inbox   │ knowledge_repo.py: check for suspicious inbox items
+│    security          │ If injection in inbox → OUTCOME_DENIED_SECURITY
 └──────┬───────────────┘
-       │ не сработало
+       │ not triggered
        ▼
 ┌──────────────────────┐
-│ 5. Frame shortcut    │ framing.py: regex-паттерны → TaskFrame без LLM
-│    ИЛИ LLM frame     │ Если паттерн не распознан → LLM создаёт frame
+│ 5. Frame shortcut    │ framing.py: regex patterns → TaskFrame without LLM
+│    OR LLM frame      │ If pattern not recognized → LLM creates frame
 └──────┬───────────────┘
        │
        ▼
 ┌──────────────────────┐
-│ 6. Ground frame      │ grounding.py: читает файлы из frame.relevant_roots
-│                      │ Загружает AGENTS.md вложенных папок
+│ 6. Ground frame      │ grounding.py: reads files from frame.relevant_roots
+│                      │ Loads AGENTS.md from nested folders
 └──────┬───────────────┘
        │
        ▼
 ┌──────────────────────┐
-│ 7. Fastpath          │ fastpath.py: 10 специализированных хендлеров
-│    handlers          │ Если какой-то сработал → задача решена без LLM
+│ 7. Fastpath          │ fastpath.py: 10 specialized handlers
+│    handlers          │ If any triggered → task solved without LLM
 └──────┬───────────────┘
-       │ ни один не сработал
+       │ none triggered
        ▼
 ┌──────────────────────┐
 │ 8. LLM ReAct Loop    │ loop.py:710-772
-│    (до 30 шагов)     │ LLM → NextStep → execute tool → result → LLM → ...
-│                      │ Выход: report_completion или max_steps
+│    (up to 30 steps)  │ LLM → NextStep → execute tool → result → LLM → ...
+│                      │ Exit: report_completion or max_steps
 └──────────────────────┘
 ```
 
-## Ключевые файлы
+## Key Files
 
-| Файл | Назначение |
+| File | Purpose |
 |---|---|
-| `main.py` | Оркестрация бенчмарка: подключение к harness, запуск задач, сбор метрик |
-| `loop.py` | Главная функция `run_agent()`: весь pipeline от bootstrap до completion |
-| `config.py` | Конфигурация из env (модель, base_url, max_steps, fastpath_mode) |
-| `models.py` | Pydantic-схемы: TaskFrame, NextStep, ReportTaskCompletion, все Req_* |
-| `llm.py` | OpenAI-клиент: JSON parsing, retry, GBNF grammar support |
-| `runtime.py` | Адаптер PCM runtime: dispatch команд, форматирование ответов |
-| `policy.py` | Промпты для LLM (system, frame, execution, tool_result) |
-| `safety.py` | Regex-детекция injection, truncated requests |
-| `framing.py` | Shortcut-фреймы (высокая уверенность) и fallback-фреймы |
-| `grounding.py` | Bootstrap, чтение workspace, ground frame |
-| `capabilities.py` | Определение профиля workspace и intent задачи |
-| `fastpath.py` | Диспетчер 10 хендлеров (пробует каждый по очереди) |
-| `verifier.py` | Проверка: generic completion guard, mutation verification |
-| `workflows.py` | Regex-парсеры для распознавания типов задач |
+| `main.py` | Benchmark orchestration: connecting to harness, running tasks, collecting metrics |
+| `loop.py` | Main function `run_agent()`: the entire pipeline from bootstrap to completion |
+| `config.py` | Configuration from env (model, base_url, max_steps, fastpath_mode) |
+| `models.py` | Pydantic schemas: TaskFrame, NextStep, ReportTaskCompletion, all Req_* |
+| `llm.py` | OpenAI client: JSON parsing, retry, GBNF grammar support |
+| `runtime.py` | PCM runtime adapter: command dispatch, response formatting |
+| `policy.py` | Prompts for LLM (system, frame, execution, tool_result) |
+| `safety.py` | Regex detection of injection, truncated requests |
+| `framing.py` | Shortcut frames (high confidence) and fallback frames |
+| `grounding.py` | Bootstrap, workspace reading, ground frame |
+| `capabilities.py` | Workspace profile and task intent determination |
+| `fastpath.py` | Dispatcher for 10 handlers (tries each in order) |
+| `verifier.py` | Verification: generic completion guard, mutation verification |
+| `workflows.py` | Regex parsers for task type recognition |
 
-## Специализированные хендлеры (fastpath)
+## Specialized Handlers (fastpath)
 
-| Хендлер | Файл | Что решает |
+| Handler | File | What it solves |
 |---|---|---|
 | `handle_direct_capture_snippet` | knowledge_repo.py | Capture snippet from website |
 | `handle_knowledge_repo_capture` | knowledge_repo.py | Take from inbox, capture, distill |
@@ -93,32 +93,32 @@
 | `handle_typed_crm_inbox` | crm_inbox.py | Process CRM inbox messages |
 | `handle_purchase_prefix_regression` | typed_mutations.py | Fix purchase ID prefix |
 
-## ReAct Loop (когда доходит до LLM)
+## ReAct Loop (when it reaches the LLM)
 
 ```
 messages = [system_prompt, workspace_context, frame, execution_prompt]
 
 for step in range(max_steps):
-    NextStep = LLM(messages)        # LLM генерирует план + tool call
+    NextStep = LLM(messages)        # LLM generates plan + tool call
     
     if NextStep.function == report_completion:
         if verifier.ok(NextStep):
-            runtime.execute(NextStep)   # отправляем ответ
+            runtime.execute(NextStep)   # send the response
             break
         else:
-            messages += verifier_feedback  # "нужны конкретные refs"
+            messages += verifier_feedback  # "need specific refs"
             continue
     
-    result = runtime.execute(NextStep.function)  # выполняем tool
-    messages += tool_result_prompt(result)        # добавляем в контекст
+    result = runtime.execute(NextStep.function)  # execute tool
+    messages += tool_result_prompt(result)        # add to context
 ```
 
-## Режим fastpath_mode
+## fastpath_mode Setting
 
-| Значение | Поведение |
+| Value | Behavior |
 |---|---|
-| `"framed"` (default) | Fastpath после фрейминга. Большинство задач решаются без ReAct loop |
-| `"all"` | Fastpath ещё и ДО фрейминга |
-| `"off"` | Fastpath отключен. Все задачи идут через LLM ReAct loop |
+| `"framed"` (default) | Fastpath after framing. Most tasks are solved without the ReAct loop |
+| `"all"` | Fastpath also BEFORE framing |
+| `"off"` | Fastpath disabled. All tasks go through the LLM ReAct loop |
 
-Для тестирования модели рекомендуется `AGENT_FASTPATH_MODE=off`.
+For model testing, `AGENT_FASTPATH_MODE=off` is recommended.
