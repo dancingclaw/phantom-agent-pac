@@ -42,22 +42,20 @@ def _clean_tool_name(name: str) -> str:
             return valid
     return name
 
-_orig_exec_fn = _tool_exec.execute_function_tool_calls
+# Patch ChatCompletionMessageToolCall to clean names at parse time
+from openai.types.chat.chat_completion_message_tool_call import Function as _OAIFunction
 
-async def _patched_exec_fn(**kwargs):
-    tool_runs = kwargs.get('tool_runs', [])
-    for tr in tool_runs:
-        tc = getattr(tr, 'tool_call', tr)
-        func = getattr(tc, 'function', None)
-        if func and hasattr(func, 'name'):
-            name = func.name
-            clean = _clean_tool_name(name)
-            if clean != name:
-                print(f"  [HARMONY-FIX] '{name}' → '{clean}'")
-                func.name = clean
-    return await _orig_exec_fn(**kwargs)
+_orig_function_init = _OAIFunction.__init__
 
-_tool_exec.execute_function_tool_calls = _patched_exec_fn
+def _patched_function_init(self, **data):
+    if 'name' in data and data['name']:
+        clean = _clean_tool_name(data['name'])
+        if clean != data['name']:
+            print(f"  [HARMONY-FIX] '{data['name']}' → '{clean}'")
+            data['name'] = clean
+    _orig_function_init(self, **data)
+
+_OAIFunction.__init__ = _patched_function_init
 
 
 _client: AsyncOpenAI | None = None
