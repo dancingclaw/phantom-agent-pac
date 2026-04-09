@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import json
-import re
-
 from openai import AsyncOpenAI
 from agents import (
     Agent,
@@ -20,17 +17,20 @@ from .tools import ALL_TOOLS
 
 
 _client: AsyncOpenAI | None = None
+_client_key: tuple[str, str] | None = None
 
 
 def _get_client(cfg: Config) -> AsyncOpenAI:
-    global _client
-    if _client is None:
+    global _client, _client_key
+    key = (cfg.openai_api_key, cfg.openai_base_url)
+    if _client is None or _client_key != key:
         set_tracing_disabled(True)
         _client = AsyncOpenAI(
             api_key=cfg.openai_api_key,
             base_url=cfg.openai_base_url or None,
             timeout=cfg.request_timeout,
         )
+        _client_key = key
     return _client
 
 
@@ -52,23 +52,14 @@ def create_agent(cfg: Config, temperature: float = 1.0) -> Agent[TaskContext]:
     )
 
 
-def _extract_fallback_answer(text: str) -> tuple[str, str, list[str]]:
-    """Try to parse agent's text output into (message, outcome, refs)."""
-    # Try JSON parse
-    try:
-        for match in re.finditer(r"\{[^{}]*\}", text, re.DOTALL):
-            obj = json.loads(match.group())
-            if "message" in obj and "outcome" in obj:
-                return (
-                    str(obj["message"]),
-                    str(obj["outcome"]),
-                    list(obj.get("grounding_refs", [])),
-                )
-    except (json.JSONDecodeError, KeyError):
-        pass
-    # Extract file paths from text as refs
-    refs = re.findall(r"/[\w._-]+(?:/[\w._-]+)+", text)
-    return text[:500], "OUTCOME_OK", refs[:5]
+FORCE_TOOL_PROMPT = """You already solved the task and produced this answer:
+
+<YOUR_ANSWER>
+{output}
+</YOUR_ANSWER>
+
+Now you MUST call report_completion tool to submit it. Do NOT produce text. Call the tool NOW.
+Pick the correct outcome (OUTCOME_OK, OUTCOME_DENIED_SECURITY, OUTCOME_NONE_CLARIFICATION, OUTCOME_NONE_UNSUPPORTED) and include grounding_refs."""
 
 
 async def run_task(
@@ -129,36 +120,21 @@ async def run_task(
             "classifier": classifier_type,
         })
 
-    max_retries = 3
     try:
-        for attempt in range(1, max_retries + 1):
-            result = await Runner.run(
-                agent,
-                input=build_task_prompt(task_text, skill_prompt),
-                context=context,
-                max_turns=cfg.max_turns,
-                hooks=hooks,
-                run_config=RunConfig(
-                    model_settings=ModelSettings(
-                        temperature=agent.model_settings.temperature if agent.model_settings else 1.0,
-                        max_tokens=4096,
-                    ),
+        result = await Runner.run(
+            agent,
+            input=build_task_prompt(task_text, skill_prompt),
+            context=context,
+            max_turns=cfg.max_turns,
+            hooks=hooks,
+            run_config=RunConfig(
+                model_settings=ModelSettings(
+                    temperature=agent.model_settings.temperature if agent.model_settings else 1.0,
+                    max_tokens=4096,
                 ),
-            )
-            output = str(result.final_output)
-
-            # If model made zero tool calls and didn't submit, retry
-            if not context.completion_submitted and telemetry.tool_calls == 0 and attempt < max_retries:
-                print(f"  {task_id} [RETRY {attempt}/{max_retries}] 0 tool calls, retrying...")
-                if on_event:
-                    on_event("fallback_submit", {
-                        "task_id": task_id,
-                        "message": f"Retry {attempt}/{max_retries}: model returned text without tool calls",
-                        "outcome": "RETRY",
-                    })
-                hooks.step = 0
-                continue
-            break
+            ),
+        )
+        output = str(result.final_output)
 
         print(f"  {task_id} output: {output[:200]}")
         if on_event:
@@ -168,25 +144,33 @@ async def run_task(
                 "completion_submitted": context.completion_submitted,
             })
 
-        # Fallback: if agent never called report_completion, submit now
+        # If agent finished without calling report_completion, re-run with force prompt
         if not context.completion_submitted:
-            print("  [FALLBACK] report_completion not called, submitting from text output")
-            message, outcome, refs = _extract_fallback_answer(output)
-            await context.runtime.answer(message, outcome, refs)
+            print(f"  {task_id} [FORCE_TOOL] re-running to call report_completion")
             if on_event:
-                on_event("fallback_submit", {"task_id": task_id, "message": message, "outcome": outcome})
+                on_event("fallback_submit", {
+                    "task_id": task_id,
+                    "message": "Re-running agent to force tool call",
+                    "outcome": "FORCE_TOOL",
+                })
+            force_result = await Runner.run(
+                agent,
+                input=FORCE_TOOL_PROMPT.format(output=output[:2000]),
+                context=context,
+                max_turns=3,
+                hooks=hooks,
+                run_config=RunConfig(
+                    model_settings=ModelSettings(
+                        temperature=0.0,
+                        max_tokens=4096,
+                    ),
+                ),
+            )
+            if not context.completion_submitted:
+                print(f"  {task_id} [FORCE_TOOL] still no tool call, giving up")
 
     except Exception as exc:
         print(f"  Agent error: {exc}")
-        if not context.completion_submitted:
-            try:
-                await context.runtime.answer(
-                    message=f"Agent internal error: {exc}",
-                    outcome="OUTCOME_ERR_INTERNAL",
-                    refs=["/AGENTS.md"],
-                )
-            except Exception:
-                pass
     finally:
         telemetry.finish()
 

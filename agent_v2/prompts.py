@@ -27,4 +27,5 @@ def build_task_prompt(task_text: str, skill_prompt: str | None = None) -> str:
 {skill_block}
 <GOAL>
 Solve this task. Orient first, reason about the approach, execute, verify, complete.
+REMINDER: Your LAST action MUST be calling report_completion tool. Never end with text.
 </GOAL>"""

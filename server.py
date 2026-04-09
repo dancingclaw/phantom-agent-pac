@@ -395,7 +395,7 @@ class RunRequest(BaseModel):
 @app.get("/api/config")
 async def get_config():
     cfg = _get_cfg()
-    return {"model": cfg.model, "concurrency": cfg.concurrency, "max_turns": cfg.max_turns, "benchmark_id": cfg.benchmark_id, "temperature": _temperature}
+    return {"model": cfg.model, "concurrency": cfg.concurrency, "max_turns": cfg.max_turns, "benchmark_id": cfg.benchmark_id, "temperature": _temperature, "openai_base_url": cfg.openai_base_url, "openai_api_key": cfg.openai_api_key}
 
 
 @app.put("/api/config/temperature")
@@ -406,6 +406,42 @@ async def set_temperature(body: dict):
         return {"error": "temperature must be between 0 and 2"}
     _temperature = t
     return {"temperature": _temperature}
+
+
+@app.get("/api/config/llm")
+async def get_llm_config():
+    cfg = _get_cfg()
+    return {
+        "model": cfg.model,
+        "openai_base_url": cfg.openai_base_url,
+        "openai_api_key": cfg.openai_api_key,
+        "bitgn_api_key": cfg.bitgn_api_key or "",
+    }
+
+
+@app.put("/api/config/llm")
+async def set_llm_config(body: dict):
+    global _cfg, _agent
+    old = _get_cfg()
+    _cfg = Config(
+        model=body.get("model", old.model),
+        openai_api_key=body.get("openai_api_key", old.openai_api_key),
+        openai_base_url=body.get("openai_base_url", old.openai_base_url),
+        bitgn_api_key=body.get("bitgn_api_key", old.bitgn_api_key),
+        benchmark_host=old.benchmark_host,
+        benchmark_id=old.benchmark_id,
+        run_name=old.run_name,
+        max_turns=old.max_turns,
+        concurrency=old.concurrency,
+        request_timeout=old.request_timeout,
+    )
+    _agent = None  # force re-creation on next run
+    return {
+        "model": _cfg.model,
+        "openai_base_url": _cfg.openai_base_url,
+        "openai_api_key": _cfg.openai_api_key,
+        "bitgn_api_key": _cfg.bitgn_api_key or "",
+    }
 
 
 @app.get("/api/skills")
@@ -516,6 +552,20 @@ async def get_task_log(run_id: str, task_id: str):
     return PlainTextResponse("\n".join(lines))
 
 
+@app.post("/api/runs/{run_id}/stop")
+async def stop_run(run_id: str):
+    run = _runs.get(run_id)
+    if not run:
+        return {"error": "not found"}
+    if run.status != RunStatus.RUNNING:
+        return {"error": "not running"}
+    run.status = RunStatus.ERROR
+    run.finished_at = time.time()
+    store.update_run(run_id, status="error", finished_at=run.finished_at)
+    _emit(run_id, "run_error", {"error": "Stopped by user"})
+    return {"stopped": run_id}
+
+
 @app.delete("/api/runs/{run_id}")
 async def delete_run(run_id: str):
     _runs.pop(run_id, None)
@@ -579,4 +629,4 @@ async def compare_runs(run_ids: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

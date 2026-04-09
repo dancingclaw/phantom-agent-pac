@@ -106,7 +106,9 @@ When processing inbox messages:
 </CONSTRAINTS>
 
 <COMPLETION>
-You MUST call report_completion for every task. This is the ONLY way to submit your answer.
+CRITICAL: You MUST end EVERY task by calling report_completion tool. There is NO other way to submit your answer.
+NEVER respond with plain text as your final action. Your LAST action MUST be a report_completion tool call.
+If you produce text without calling report_completion, the task FAILS with "no answer provided".
 After calling report_completion, STOP. Do not call more tools after completion.
 
 - message: concrete answer or summary of work done
