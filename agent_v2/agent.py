@@ -42,20 +42,22 @@ def _clean_tool_name(name: str) -> str:
             return valid
     return name
 
-# Patch ChatCompletionMessageToolCall to clean names at parse time
+# Patch BOTH tool call types to clean names at parse time
 from openai.types.chat.chat_completion_message_tool_call import Function as _OAIFunction
+from openai.types.responses import ResponseFunctionToolCall as _RespFTC
 
-_orig_function_init = _OAIFunction.__init__
+def _make_patched_init(orig_init):
+    def _patched_init(self, **data):
+        if 'name' in data and data['name']:
+            clean = _clean_tool_name(data['name'])
+            if clean != data['name']:
+                print(f"  [HARMONY-FIX] '{data['name']}' → '{clean}'")
+                data['name'] = clean
+        orig_init(self, **data)
+    return _patched_init
 
-def _patched_function_init(self, **data):
-    if 'name' in data and data['name']:
-        clean = _clean_tool_name(data['name'])
-        if clean != data['name']:
-            print(f"  [HARMONY-FIX] '{data['name']}' → '{clean}'")
-            data['name'] = clean
-    _orig_function_init(self, **data)
-
-_OAIFunction.__init__ = _patched_function_init
+_OAIFunction.__init__ = _make_patched_init(_OAIFunction.__init__)
+_RespFTC.__init__ = _make_patched_init(_RespFTC.__init__)
 
 
 _client: AsyncOpenAI | None = None

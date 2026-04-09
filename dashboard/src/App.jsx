@@ -167,6 +167,10 @@ function CompareView({ compareIds, runs }) {
   if (compareIds.length < 2) return <div className="text-center py-12 text-slate-600">Select 2+ runs in sidebar to compare</div>
   if (!data) return <div className="text-center py-12 text-slate-600">Loading...</div>
 
+  // Sort: oldest left, newest right
+  const runsMapLocal = Object.fromEntries((runs||[]).map(r=>[r.run_id, r.started_at||0]))
+  const sortedIds = [...compareIds].sort((a,b)=>(runsMapLocal[a]||0)-(runsMapLocal[b]||0))
+
   const unstable = data.heatmap.filter(r => !r.stable)
   const alwaysFail = data.heatmap.filter(r => r.always_fail)
 
@@ -189,7 +193,7 @@ function CompareView({ compareIds, runs }) {
           <span className="text-slate-400">{data.heatmap.length} total</span>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {compareIds.map(rid => (
+          {sortedIds.map(rid => (
             <div key={rid} className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400">
               <span className="font-mono">{rid}</span>: <span className="font-bold text-white">{(data.run_scores[rid]||0).toFixed(1)}%</span>
             </div>
@@ -203,7 +207,7 @@ function CompareView({ compareIds, runs }) {
           <thead>
             <tr>
               <th className="text-left text-slate-600 font-normal pr-2 pb-0.5">Task</th>
-              {compareIds.map(rid=><th key={rid} className="text-center text-slate-600 font-mono font-normal px-0.5 pb-0.5">{rid}</th>)}
+              {sortedIds.map(rid=><th key={rid} className="text-center text-slate-600 font-mono font-normal px-0.5 pb-0.5">{rid}</th>)}
               <th className="text-left text-slate-600 font-normal pl-2 pb-0.5">Status</th>
             </tr>
           </thead>
@@ -211,7 +215,7 @@ function CompareView({ compareIds, runs }) {
             {data.heatmap.map(row=>(
               <tr key={row.task_id} className={`${!row.stable?'bg-amber-900/10':''} leading-none`}>
                 <td className="pr-2 py-px font-mono text-slate-400">{row.task_id}</td>
-                {compareIds.map(rid=><td key={rid} className="px-0.5 py-px"><HeatmapCell score={row.runs[rid]?.score ?? -1}/></td>)}
+                {sortedIds.map(rid=><td key={rid} className="px-0.5 py-px"><HeatmapCell score={row.runs[rid]?.score ?? -1}/></td>)}
                 <td className="pl-2 py-px">
                   {row.always_pass && <span className="text-emerald-500 text-[10px]">stable pass</span>}
                   {row.always_fail && <span className="text-red-400 text-[10px]">always fail</span>}
