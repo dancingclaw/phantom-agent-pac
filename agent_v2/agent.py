@@ -163,6 +163,7 @@ async def run_task(
                     model_settings=ModelSettings(
                         temperature=0.0,
                         max_tokens=4096,
+                        tool_choice="required",
                     ),
                 ),
             )
