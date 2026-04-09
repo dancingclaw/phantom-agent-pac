@@ -121,8 +121,9 @@ async def run_task(
         })
 
     try:
-        # Retry once if model makes 0 tool calls (text-only response)
-        for attempt in range(2):
+        # Retry up to 3 times if model makes 0 tool calls (text-only response)
+        max_retries = 3
+        for attempt in range(max_retries):
             result = await Runner.run(
                 agent,
                 input=build_task_prompt(task_text, skill_prompt),
@@ -138,12 +139,12 @@ async def run_task(
             )
             if telemetry.tool_calls > 0 or context.completion_submitted:
                 break
-            if attempt == 0:
-                print(f"  {task_id} [RETRY] 0 tool calls, retrying...")
+            if attempt < max_retries - 1:
+                print(f"  {task_id} [RETRY {attempt+1}/{max_retries}] 0 tool calls, retrying...")
                 if on_event:
                     on_event("fallback_submit", {
                         "task_id": task_id,
-                        "message": "Retry: model returned text without tool calls",
+                        "message": f"Retry {attempt+1}/{max_retries}: model returned text without tool calls",
                         "outcome": "RETRY",
                     })
                 hooks.step = 0
