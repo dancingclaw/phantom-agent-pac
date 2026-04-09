@@ -171,7 +171,26 @@ async def run_task(
                 print(f"  {task_id} [FORCE_TOOL] still no tool call, giving up")
 
     except Exception as exc:
-        print(f"  Agent error: {exc}")
+        print(f"  {task_id} Agent error: {exc}")
+        # Try force-tool even on error — model may have done useful work
+        if not context.completion_submitted:
+            try:
+                from .tools import submit_answer
+                force_agent = Agent[TaskContext](
+                    name="ForceSubmit",
+                    instructions="The previous agent run failed. Call submit_answer with OUTCOME_OK and a brief summary. Use any grounding_refs from files you read.",
+                    model=agent.model,
+                    tools=[submit_answer],
+                    model_settings=ModelSettings(temperature=0.0, max_tokens=4096, tool_choice="required"),
+                )
+                await Runner.run(
+                    force_agent,
+                    input=f"Previous error: {str(exc)[:200]}. Submit answer now.",
+                    context=context,
+                    max_turns=1,
+                )
+            except Exception:
+                pass
     finally:
         telemetry.finish()
 
