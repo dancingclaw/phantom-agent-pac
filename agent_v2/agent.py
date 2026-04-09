@@ -184,7 +184,7 @@ async def run_task(
                         ),
                     ),
                 )
-                if telemetry.tool_calls > 0 or context.completion_submitted:
+                if context.completion_submitted or telemetry.tool_calls >= 5:
                     break
             except ModelBehaviorError as mbe:
                 print(f"  {task_id} [RETRY {attempt+1}/{max_retries}] ModelBehaviorError: {mbe}")
