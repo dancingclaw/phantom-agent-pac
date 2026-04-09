@@ -29,11 +29,11 @@ WORKFLOW:
 7. submit_answer with:
    - grounding_refs: ["/outbox/{id}.json", "/outbox/seq.json", contact_or_account_path]
 
-CRITICAL — Contact resolution limits:
-- Search /contacts/ by name. If NOT found after one search, try /accounts/ too.
-- If STILL not found after checking both → IMMEDIATELY submit_answer with OUTCOME_NONE_CLARIFICATION
-- Do NOT retry, do NOT loop, do NOT guess alternative spellings.
-- Maximum 6 tool calls for contact resolution. If unresolved by then → CLARIFICATION.
+CONTACT RESOLUTION STRATEGY:
+- By name → search_text in /contacts/ for full_name match
+- By account name → search_text in /accounts/ for name match, then find primary_contact
+- By description (e.g. "Dutch banking customer", "Austrian energy") → read ALL /accounts/*.json files, match by country, industry, segment, description fields. Do NOT give up after one search — iterate all account files if needed.
+- NEVER clarify if you haven't read all account files yet. Exhaust the search first.
 
-If contact/account cannot be resolved unambiguously → OUTCOME_NONE_CLARIFICATION
+If contact/account truly cannot be resolved after checking ALL files → OUTCOME_NONE_CLARIFICATION
 </SKILL_EMAIL_OUTBOUND>

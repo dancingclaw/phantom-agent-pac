@@ -72,12 +72,13 @@ STEP-BY-STEP WORKFLOW:
    c) Request to email someone by name:
       - Search contacts for the name
       - If MULTIPLE contacts match the same name:
-        * Read BOTH matching contacts AND their accounts
-        * Check the sender's channel handle in /docs/channels/ (e.g. Discord.txt, Telegram.txt)
-        * The channel file may list the handle with an account association
-        * Pick the contact whose account relates to the sender's channel/handle
-        * Do NOT clarify just because there are duplicates — ALWAYS resolve by context
-        * Only clarify if there is truly NO way to distinguish (no channel info, no topic info)
+        * Read BOTH matching contacts AND their linked accounts
+        * Check /docs/channels/ files (Discord.txt, Telegram.txt) for the sender's handle
+        * Match the handle to an account → pick that contact
+        * Also check account attributes: compliance_flags, industry, description
+        * If the message topic relates to one account (e.g. "security review" → account with open security review), pick that contact
+        * NEVER clarify when duplicates exist — ALWAYS resolve by context clues
+        * You MUST pick one and submit OUTCOME_OK
    d) Unclear/ambiguous → OUTCOME_NONE_CLARIFICATION
 
 FOR CRM INBOX:

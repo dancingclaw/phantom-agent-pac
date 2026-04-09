@@ -11,9 +11,11 @@ LOOKUP TYPES:
 7. Legal name: find account → return legal_name field
 
 SEARCH STRATEGY:
-- For exact names: iterate files, match full_name or name field
-- For descriptions ("Dutch banking customer", "Austrian energy"): iterate accounts,
-  match by country, industry, segment, description fields
+- For exact names: search_text in /accounts/ or /contacts/ for name match
+- For descriptions ("Dutch banking customer", "Austrian energy", "grid-modernization"):
+  * search_text for keywords from the description (e.g. "banking", "energy", "grid")
+  * If no results, list ALL /accounts/*.json and read each one to match by country, industry, segment, description
+  * NEVER clarify until you have checked ALL account files
 - Name matching is case-insensitive, try BOTH "First Last" and "Last First" orderings
 - For "accounts managed by X": search /accounts/ for BOTH name orderings (e.g. "Engel Greta" AND "Greta Engel"), then read EVERY matching account file to verify and extract the account name
 - ALSO search /contacts/mgr_*.json for the manager name — include manager contact file in grounding_refs

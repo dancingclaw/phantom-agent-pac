@@ -58,8 +58,7 @@ FORCE_TOOL_PROMPT = """You already solved the task and produced this answer:
 {output}
 </YOUR_ANSWER>
 
-Now you MUST call submit_answer tool to submit it. Do NOT produce text. Call the tool NOW.
-Pick the correct outcome (OUTCOME_OK, OUTCOME_DENIED_SECURITY, OUTCOME_NONE_CLARIFICATION, OUTCOME_NONE_UNSUPPORTED) and include grounding_refs."""
+Now call submit_answer with this answer. Extract message, outcome, and grounding_refs from your answer above."""
 
 
 async def run_task(
@@ -144,28 +143,29 @@ async def run_task(
                 "completion_submitted": context.completion_submitted,
             })
 
-        # If agent finished without calling submit_answer, re-run with force prompt
+        # If agent finished without calling submit_answer, re-run with ONLY submit_answer tool
         if not context.completion_submitted:
-            print(f"  {task_id} [FORCE_TOOL] re-running to call submit_answer")
+            print(f"  {task_id} [FORCE_TOOL] re-running with only submit_answer")
             if on_event:
                 on_event("fallback_submit", {
                     "task_id": task_id,
                     "message": "Re-running agent to force tool call",
                     "outcome": "FORCE_TOOL",
                 })
-            force_result = await Runner.run(
-                agent,
+            from .tools import submit_answer
+            force_agent = Agent[TaskContext](
+                name="ForceSubmit",
+                instructions="You must call submit_answer with the provided answer. Nothing else.",
+                model=agent.model,
+                tools=[submit_answer],
+                model_settings=ModelSettings(temperature=0.0, max_tokens=4096, tool_choice="required"),
+            )
+            await Runner.run(
+                force_agent,
                 input=FORCE_TOOL_PROMPT.format(output=output[:2000]),
                 context=context,
-                max_turns=3,
+                max_turns=1,
                 hooks=hooks,
-                run_config=RunConfig(
-                    model_settings=ModelSettings(
-                        temperature=0.0,
-                        max_tokens=4096,
-                        tool_choice="required",
-                    ),
-                ),
             )
             if not context.completion_submitted:
                 print(f"  {task_id} [FORCE_TOOL] still no tool call, giving up")
