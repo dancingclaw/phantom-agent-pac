@@ -79,9 +79,10 @@ STEP-BY-STEP WORKFLOW:
         * Check /docs/channels/ files (Discord.txt, Telegram.txt) for the sender's handle
         * Match the handle to an account → pick that contact
         * Also check account attributes: compliance_flags, industry, description
-        * If the message topic relates to one account (e.g. "security review" → account with open security review), pick that contact
+        * If the message topic relates to one account (e.g. "AI insights" → account with ai_insights_subscriber flag, "security review" → account with security_review_open), pick that contact
         * NEVER clarify when duplicates exist — ALWAYS resolve by context clues
         * You MUST pick one and submit OUTCOME_OK
+        * If you already wrote an email to outbox — you made your choice. Do NOT second-guess. Submit OUTCOME_OK.
    d) Unclear/ambiguous → OUTCOME_NONE_CLARIFICATION
 
 FOR CRM INBOX:
