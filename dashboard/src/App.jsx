@@ -68,7 +68,11 @@ function TaskPanel({ task, events, runId }) {
         </div>
         <CopyButton runId={runId} taskId={task.task_id}/>
       </div>
-      {task.score_detail?.length>0&&<div className="px-5 py-2 border-b border-slate-800/50"><div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">Score detail</div>{task.score_detail.map((d,i)=><div key={i} className="text-xs text-red-400/80">{d}</div>)}</div>}
+      {task.score===0&&<div className="px-5 py-3 border-b border-slate-800/50 bg-red-950/20">
+        <div className="text-[10px] uppercase tracking-wider text-red-400/60 mb-2">Failed — Expected vs Actual</div>
+        {task.score_detail?.map((d,i)=><div key={i} className="text-xs text-red-400 mb-1">{d}</div>)}
+        {(()=>{const out=taskEvents.find(e=>e.type==='agent_output');return out?<div className="mt-2"><div className="text-[10px] text-slate-600 mb-1">Agent answer:</div><pre className="text-xs text-slate-400 whitespace-pre-wrap max-h-24 overflow-y-auto bg-slate-950/50 rounded p-2 border border-slate-800/50">{out.output||'(empty)'}</pre></div>:null})()}
+      </div>}
       <div ref={scrollRef} className="px-5 py-3 space-y-0.5 text-xs font-mono max-h-[600px] overflow-y-auto">
         {taskEvents.length===0&&<div className="text-slate-700 py-4 text-center">Waiting for events...</div>}
         {taskEvents.map((ev,i)=><EventLine key={i} ev={ev}/>)}

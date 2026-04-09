@@ -22,9 +22,13 @@ WORKFLOW:
      "body": "<from task>"
    }
 
-5. Update /outbox/seq.json with incremented next value
+5. Update /outbox/seq.json to {"id": next_seq + 1}
 
-6. Verify by reading the created file back
+6. Verify by reading the created file back — must be valid JSON
+
+CRITICAL: Read /outbox/README.MD first for exact format. Write EXACTLY ONCE. Filename = seq.json id value.
+Email format: {"subject": "...", "to": "email", "body": "...", "sent": false}
+Add "attachments": ["path"] if needed.
 
 7. submit_answer with:
    - grounding_refs: ["/outbox/{id}.json", "/outbox/seq.json", contact_or_account_path]
