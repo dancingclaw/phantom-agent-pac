@@ -18,7 +18,8 @@ SEARCH STRATEGY:
   * NEVER clarify until you have checked ALL account files
 - Name matching is case-insensitive, try BOTH "First Last" and "Last First" orderings
 - For "accounts managed by X": search /accounts/ for BOTH name orderings (e.g. "Engel Greta" AND "Greta Engel"), then read EVERY matching account file to verify and extract the account name
-- ALSO search /contacts/mgr_*.json for the manager name — include manager contact file in grounding_refs
+- CRITICAL: ALSO search /contacts/mgr_*.json for the manager name — you MUST include the manager's contact file in grounding_refs or the answer FAILS
+- Always: find_files_by_name("mgr_*", "/contacts/") and read matching files
 - NEVER guess — always verify by reading the actual file
 
 COUNTING RULES (for "how many" questions):

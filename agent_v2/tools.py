@@ -61,7 +61,12 @@ async def read_file(
     ctx.context.telemetry.tool_calls += 1
     if path not in ctx.context.files_read:
         ctx.context.files_read.append(path)
-    return await ctx.context.runtime.read_file(path, start_line, end_line, number)
+    content = await ctx.context.runtime.read_file(path, start_line, end_line, number)
+    # Store content of inbox/security-relevant files for verifier
+    lower = path.lower()
+    if '/inbox/' in lower or 'agents.md' in lower or '/otp' in lower or '/msg_' in lower:
+        ctx.context.file_contents[path] = content[:1000]
+    return content
 
 
 @function_tool
@@ -186,7 +191,6 @@ async def submit_answer(
     ctx.context.completion_submitted = True
     # Auto-fill grounding_refs from last written/read file if model forgot
     if not grounding_refs:
-        # Prefer last written file, fallback to last read file
         last = None
         if ctx.context.files_written:
             last = ctx.context.files_written[-1]
@@ -195,6 +199,7 @@ async def submit_answer(
         if last and not last.upper().endswith('README.MD') and '/docs/' not in last and last != '/AGENTS.md':
             print(f"  [AUTO-REF] injecting last file: {last}")
             grounding_refs = [last]
+
     return await ctx.context.runtime.answer(message, outcome, grounding_refs)
 
 
