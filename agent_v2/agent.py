@@ -16,6 +16,26 @@ from .prompts import get_system_prompt, build_task_prompt
 from .tools import ALL_TOOLS
 
 
+# Monkey-patch: clean Harmony format garbage from tool names
+# gpt-oss-120b sometimes generates "read_file<|channel|>commentary" instead of "read_file"
+import re as _re
+import agents.run_internal.tool_execution as _tool_exec
+
+_orig_exec_fn = _tool_exec.execute_function_tool_calls
+
+async def _patched_exec_fn(*, tool_calls, **kwargs):
+    for tc in tool_calls:
+        if hasattr(tc, 'function') and hasattr(tc.function, 'name'):
+            name = tc.function.name
+            if '<|' in name:
+                clean = _re.sub(r'<\|.*', '', name).strip()
+                print(f"  [HARMONY-FIX] '{name}' → '{clean}'")
+                tc.function.name = clean
+    return await _orig_exec_fn(tool_calls=tool_calls, **kwargs)
+
+_tool_exec.execute_function_tool_calls = _patched_exec_fn
+
+
 _client: AsyncOpenAI | None = None
 _client_key: tuple[str, str] | None = None
 
