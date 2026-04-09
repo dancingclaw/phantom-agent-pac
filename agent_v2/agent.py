@@ -12,7 +12,7 @@ from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 
 from .config import Config
 from .context import TaskContext, Telemetry
-from .prompts import get_system_prompt, build_task_prompt
+from .prompts import get_system_prompt_with_skills, build_task_prompt
 from .tools import ALL_TOOLS
 
 
@@ -62,7 +62,7 @@ def create_agent(cfg: Config, temperature: float = 1.0) -> Agent[TaskContext]:
     )
     return Agent[TaskContext](
         name="PAC1-Agent",
-        instructions=get_system_prompt(),
+        instructions=get_system_prompt_with_skills(),
         model=model,
         tools=ALL_TOOLS,
         model_settings=ModelSettings(

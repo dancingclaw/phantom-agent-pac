@@ -16,33 +16,28 @@ def get_system_prompt() -> str:
 SYSTEM_PROMPT = get_system_prompt()
 
 
-def _build_skills_menu(recommended_skill_id: str | None = None) -> str:
-    """Build compact skills list with recommended hint."""
+def get_system_prompt_with_skills() -> str:
+    """System prompt + available skills menu."""
     from .skills.registry import SKILL_REGISTRY
-    lines = ["<AVAILABLE_SKILLS>"]
+    base = get_system_prompt()
+    lines = ["\n<AVAILABLE_SKILLS>",
+             "Call get_skill_instructions(skill_id) to load full workflow before acting."]
     for sid, s in SKILL_REGISTRY.items():
-        marker = " ← RECOMMENDED" if sid == recommended_skill_id else ""
-        lines.append(f"- {sid}: {s.description}{marker}")
-    lines.append("")
-    if recommended_skill_id:
-        lines.append(f"Classifier suggests: {recommended_skill_id}")
-        lines.append(f"Load full instructions: get_skill_instructions(\"{recommended_skill_id}\")")
-    else:
-        lines.append("Use list_skills and get_skill_instructions to load workflow details.")
+        lines.append(f"- {sid}: {s.description}")
     lines.append("</AVAILABLE_SKILLS>")
-    return "\n".join(lines)
+    return base + "\n".join(lines)
 
 
 def build_task_prompt(task_text: str, skill_id: str | None = None) -> str:
-    skills_menu = _build_skills_menu(skill_id)
+    hint = ""
+    if skill_id:
+        hint = f'\nRecommended skill: {skill_id} — call get_skill_instructions("{skill_id}") first.\n'
 
     return f"""<TASK>
 {task_text}
 </TASK>
-
-{skills_menu}
-
+{hint}
 <GOAL>
-Solve this task. First call get_skill_instructions to load the recommended skill workflow, then orient, execute, verify, complete.
+Solve this task. Load the recommended skill, then orient, execute, verify, complete.
 REMINDER: Your LAST action MUST be calling submit_answer tool. Never end with text.
 </GOAL>"""

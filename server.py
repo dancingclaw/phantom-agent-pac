@@ -452,8 +452,8 @@ async def list_skills():
 @app.get("/api/prompt")
 async def get_prompt():
     """Return the full system prompt as markdown."""
-    from agent_v2.prompts import get_system_prompt
-    return {"prompt": get_system_prompt()}
+    from agent_v2.prompts import get_system_prompt_with_skills
+    return {"prompt": get_system_prompt_with_skills()}
 
 
 @app.post("/api/runs")
