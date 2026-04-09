@@ -1,0 +1,26 @@
+[project]
+name = "bitgn-pac1-py"
+version = "0.1.0"
+description = "Runnable Python sample for the BitGN PAC1 benchmark"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "annotated-types>=0.7.0",
+    "bitgn-local-sdk",
+    "connectrpc==0.9.0",
+    "openai>=2.26.0",
+    "openai-agents>=0.0.7",
+    "protobuf>=6.33.0,<8",
+    "pydantic>=2.12.5",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+]
+
+[tool.uv.sources]
+bitgn-local-sdk = { path = "../bitgn-local-sdk" }
+
+[tool.uv]
+# AICODE-NOTE: Keep this project flat so the sample stays runnable without
+# packaging ceremony. The BitGN SDK modules come from the local path dependency
+# `../bitgn-local-sdk`, which is generated from the repository `proto/` files.
+package = false

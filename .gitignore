@@ -1,0 +1,12 @@
+.DS_Store
+.envrc
+.env
+.idea/
+benchmark-runs/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+node_modules/
+dist/
+*.db

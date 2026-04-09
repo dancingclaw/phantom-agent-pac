@@ -1,0 +1,239 @@
+from __future__ import annotations
+
+from agents import function_tool, RunContextWrapper
+
+from .context import TaskContext
+
+
+@function_tool
+async def get_context(ctx: RunContextWrapper[TaskContext]) -> str:
+    """Get the current sandbox date/time. Call this first to know what date it is in the workspace. Returns JSON with unixTime and ISO time."""
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.get_context()
+
+
+@function_tool
+async def tree(
+    ctx: RunContextWrapper[TaskContext],
+    root: str = "/",
+    level: int = 2,
+) -> str:
+    """Show directory tree structure. Use to understand workspace layout.
+
+    Args:
+        root: Root directory to start from (default "/").
+        level: Maximum depth level (default 2, use 0 for unlimited).
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.tree(root, level)
+
+
+@function_tool
+async def list_directory(
+    ctx: RunContextWrapper[TaskContext],
+    path: str = "/",
+) -> str:
+    """List contents of a directory. Returns file and folder names.
+
+    Args:
+        path: Directory path to list (default "/").
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.list_dir(path)
+
+
+@function_tool
+async def read_file(
+    ctx: RunContextWrapper[TaskContext],
+    path: str,
+    start_line: int = 0,
+    end_line: int = 0,
+    number: bool = False,
+) -> str:
+    """Read file contents. Use to inspect any file in the workspace.
+
+    Args:
+        path: File path to read.
+        start_line: First line to read (1-based, 0 = from beginning).
+        end_line: Last line to read (1-based, 0 = to end).
+        number: If true, show line numbers.
+    """
+    ctx.context.telemetry.tool_calls += 1
+    if path not in ctx.context.files_read:
+        ctx.context.files_read.append(path)
+    return await ctx.context.runtime.read_file(path, start_line, end_line, number)
+
+
+@function_tool
+async def find_files(
+    ctx: RunContextWrapper[TaskContext],
+    name: str,
+    root: str = "/",
+    kind: str = "all",
+    limit: int = 10,
+) -> str:
+    """Find files by name pattern.
+
+    Args:
+        name: Filename pattern to search for.
+        root: Directory to search in (default "/").
+        kind: Filter type — "all", "files", or "dirs".
+        limit: Maximum results (1-100).
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.find_files(name, root, kind, min(limit, 100))
+
+
+@function_tool
+async def search(
+    ctx: RunContextWrapper[TaskContext],
+    pattern: str,
+    root: str = "/",
+    limit: int = 10,
+) -> str:
+    """Full-text search across files (regex supported). For counting, set limit=1000.
+
+    Args:
+        pattern: Search pattern (regex).
+        root: Directory to search in (default "/").
+        limit: Maximum results (1-2000). Use 1000+ for counting queries.
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.search(pattern, root, min(limit, 2000))
+
+
+@function_tool
+async def write_file(
+    ctx: RunContextWrapper[TaskContext],
+    path: str,
+    content: str,
+    start_line: int = 0,
+    end_line: int = 0,
+) -> str:
+    """Write or overwrite file contents. Use for creating new files or updating existing ones.
+
+    Args:
+        path: File path to write.
+        content: Content to write.
+        start_line: Replace from this line (1-based, 0 = overwrite entire file).
+        end_line: Replace to this line (1-based, 0 = to end for ranged writes).
+    """
+    ctx.context.telemetry.tool_calls += 1
+    if path not in ctx.context.files_written:
+        ctx.context.files_written.append(path)
+    return await ctx.context.runtime.write_file(path, content, start_line, end_line)
+
+
+@function_tool
+async def delete_file(
+    ctx: RunContextWrapper[TaskContext],
+    path: str,
+) -> str:
+    """Delete a file or directory.
+
+    Args:
+        path: Path to delete.
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.delete(path)
+
+
+@function_tool
+async def make_directory(
+    ctx: RunContextWrapper[TaskContext],
+    path: str,
+) -> str:
+    """Create a new directory.
+
+    Args:
+        path: Directory path to create.
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.mkdir(path)
+
+
+@function_tool
+async def move_file(
+    ctx: RunContextWrapper[TaskContext],
+    from_path: str,
+    to_path: str,
+) -> str:
+    """Move or rename a file/directory.
+
+    Args:
+        from_path: Current path.
+        to_path: New path.
+    """
+    ctx.context.telemetry.tool_calls += 1
+    return await ctx.context.runtime.move(from_path, to_path)
+
+
+@function_tool
+async def report_completion(
+    ctx: RunContextWrapper[TaskContext],
+    message: str,
+    outcome: str,
+    grounding_refs: list[str],
+) -> str:
+    """Submit the final answer for this task. Call this when you are done.
+
+    Args:
+        message: Your answer or summary of completed work. For lookup tasks, put the exact answer here.
+        outcome: One of: OUTCOME_OK, OUTCOME_DENIED_SECURITY, OUTCOME_NONE_CLARIFICATION, OUTCOME_NONE_UNSUPPORTED, OUTCOME_ERR_INTERNAL.
+        grounding_refs: List of exact file paths that support your answer. Example: ["/accounts/acc_001.json", "/contacts/c_003.json"]. Must be real paths, NOT descriptions.
+    """
+    ctx.context.telemetry.tool_calls += 1
+    ctx.context.completion_submitted = True
+    # Auto-fill grounding_refs from last written/read file if model forgot
+    if not grounding_refs:
+        # Prefer last written file, fallback to last read file
+        last = None
+        if ctx.context.files_written:
+            last = ctx.context.files_written[-1]
+        elif ctx.context.files_read:
+            last = ctx.context.files_read[-1]
+        if last and not last.upper().endswith('README.MD') and '/docs/' not in last and last != '/AGENTS.md':
+            print(f"  [AUTO-REF] injecting last file: {last}")
+            grounding_refs = [last]
+    return await ctx.context.runtime.answer(message, outcome, grounding_refs)
+
+
+@function_tool
+async def list_skills(ctx: RunContextWrapper[TaskContext]) -> str:
+    """List all available skill instructions. Use this if you're unsure which workflow to follow, or if you think the initial skill classification was wrong. Returns skill IDs and descriptions."""
+    from .skills.registry import SKILL_REGISTRY
+    lines = []
+    for sid, s in SKILL_REGISTRY.items():
+        lines.append(f"- {sid}: {s.description}")
+    return "\n".join(lines)
+
+
+@function_tool
+async def get_skill_instructions(ctx: RunContextWrapper[TaskContext], skill_id: str) -> str:
+    """Get the full workflow instructions for a specific skill. Call this if you need detailed guidance for a task type, or if you want to switch to a different skill workflow.
+
+    Args:
+        skill_id: The skill identifier (e.g. "inbox_processing", "email_outbound", "crm_lookup").
+    """
+    from .skills.registry import SKILL_REGISTRY
+    skill = SKILL_REGISTRY.get(skill_id)
+    if not skill:
+        return f"Unknown skill_id '{skill_id}'. Call list_skills to see available options."
+    return skill.prompt or f"No detailed instructions for {skill_id}."
+
+
+ALL_TOOLS = [
+    get_context,
+    tree,
+    list_directory,
+    read_file,
+    find_files,
+    search,
+    write_file,
+    delete_file,
+    make_directory,
+    move_file,
+    list_skills,
+    get_skill_instructions,
+    report_completion,
+]
