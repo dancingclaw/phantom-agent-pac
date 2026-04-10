@@ -234,7 +234,7 @@ async def _run_single(
         emitter("task_error", {"task_id": task_id, "error": str(exc)[:500]})
 
 
-async def _run_benchmark_async(run_id: str, task_filter: list[str] | None = None) -> None:
+async def _run_benchmark_async(run_id: str, task_filter: list[str] | None = None, stop_on_fail: bool = False) -> None:
     cfg = _get_cfg()
     agent = _get_agent()
     harness = HarnessServiceClientSync(cfg.benchmark_host)
@@ -282,15 +282,23 @@ async def _run_benchmark_async(run_id: str, task_filter: list[str] | None = None
         })
 
         # Sliding window: semaphore limits concurrency, all tasks launched at once.
-        # As soon as one finishes, the next one starts immediately.
         semaphore = asyncio.Semaphore(concurrency)
+        cancel_event = asyncio.Event()
 
         async def _guarded(tid: str, trid: str | None) -> None:
+            if cancel_event.is_set():
+                return
             async with semaphore:
+                if cancel_event.is_set():
+                    return
                 await _run_single(
                     cfg, agent, harness, run_id, tid, trid,
                     cfg.benchmark_id, run.tasks[tid],
                 )
+                # Check for early stop on fail
+                if stop_on_fail and run.tasks[tid].score == 0.0 and run.tasks[tid].status == "done":
+                    cancel_event.set()
+                    emitter("run_early_stop", {"task_id": tid, "reason": "stop_on_fail"})
 
         await asyncio.gather(*[_guarded(tid, trid) for tid, trid in tasks])
 
@@ -394,6 +402,7 @@ async def _startup():
 class RunRequest(BaseModel):
     task_filter: list[str] | None = None
     concurrency: int = 5
+    stop_on_fail: bool = False
 
 
 @app.get("/api/config")
@@ -465,7 +474,7 @@ async def start_run(req: RunRequest):
     run_id = str(uuid.uuid4())[:8]
     _runs[run_id] = BenchmarkRun(run_id=run_id, concurrency=req.concurrency, temperature=_temperature, model=_get_cfg().model)
     store.create_run(run_id, req.concurrency, model=_get_cfg().model, temperature=_temperature)
-    asyncio.create_task(_run_benchmark_async(run_id, req.task_filter))
+    asyncio.create_task(_run_benchmark_async(run_id, req.task_filter, req.stop_on_fail))
     return {"run_id": run_id}
 
 
