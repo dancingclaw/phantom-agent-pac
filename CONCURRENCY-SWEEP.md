@@ -40,13 +40,55 @@ concurrency  wall_ms  throughput   avg/task   score
 
 ### Thinking ON vs OFF (t41 + t10, concurrency=2)
 ```
-Task            Think ON    Think OFF   Speedup   Score
-t41 (date)      43.1s       37.5s       13%       both pass
-t10 (invoice)   65.1s       59.0s       9%        both pass
-Total wall      65.2s       59.1s       9%        2/2 both
+                Think ON    /no_think hack   reasoning_effort=none
+Task            (baseline)  (broken!)        (correct API method)
+t41 (date)      43.1s       37.5s (13%)      33.2s (23% faster)
+t10 (invoice)   65.1s       59.0s (9%)       60.0s (8% faster)
+Total wall      65.2s       59.1s            60.0s
+Score           2/2         2/2              2/2
 ```
 
-**Decision: keep thinking ON.** Only 9-13% speedup, not worth risking quality on harder tasks. Previous testing with custom agent showed thinking is important for accuracy.
+**IMPORTANT: The `/no_think` text-in-system-prompt approach was broken.**
+It was silently ignored by Ollama. The correct method is `reasoning_effort: "none"`
+passed via the OpenAI-compatible API, which maps to `Reasoning(effort="none")`
+in the OpenAI Agents SDK `ModelSettings`.
+
+**Decision: keep thinking ON for now (AGENT_DISABLE_THINKING=false).**
+The 23% speedup on reasoning tasks is tempting but previous testing with our
+custom agent showed thinking is needed for harder tasks. The toggle is ready
+if we want to experiment more.
+
+## How to Enable/Disable Thinking
+
+### Method 1: Environment variable (recommended)
+```bash
+# In .env:
+AGENT_DISABLE_THINKING=true    # disables thinking via reasoning_effort=none
+AGENT_DISABLE_THINKING=false   # keeps thinking (default)
+```
+
+### How it works internally
+```
+.env AGENT_DISABLE_THINKING=true
+  → Config.disable_thinking = True
+  → agent.py: ModelSettings(reasoning=Reasoning(effort="none"))
+  → OpenAI Agents SDK sends: {"reasoning_effort": "none"} in /v1/chat/completions
+  → Ollama suppresses thinking channel at inference level
+```
+
+### What does NOT work
+- `/no_think` as text in system prompt — silently ignored by Ollama
+- `"think": false` in extra_body on /v1/ endpoint — silently ignored (only works on native /api/chat)
+- `PARAMETER think false` in Modelfile — not supported for qwen3.5 (Issue #14617)
+
+### Native Ollama API alternative (not currently used)
+If we switched from `/v1/chat/completions` to `/api/chat`, we could use:
+```json
+{"model": "qwen3.5:35b-a3b", "messages": [...], "think": false}
+```
+This is the most reliable method but would require replacing the OpenAI Agents SDK
+model adapter. Not worth it for competition timeline. See `bench_ollama.py` in the
+parent repo for a working example using `reasoning_effort: "none"` via /v1/.
 
 ## Critical Pitfalls Learned
 
@@ -103,15 +145,13 @@ uv run python main_v2.py t04 --repeat 3   # runs t04 x3 in parallel
 ./sweep_concurrency.sh t41 8 2 25092      # skip to 2, inject baseline
 ```
 
-### `agent_v2/config.py` — `disable_thinking` flag
-### `agent_v2/prompts.py` — `/no_think` appended when flag is true
-### `agent_v2/agent.py` — passes `disable_thinking` to prompt builder
+### `agent_v2/config.py` — `disable_thinking` flag from `AGENT_DISABLE_THINKING` env var
+### `agent_v2/prompts.py` — cleaned up (no longer appends `/no_think` text)
+### `agent_v2/agent.py` — uses `Reasoning(effort="none")` in `ModelSettings` when flag is set
 
 ### Git state
 - Repo: `dancingclaw/phantom-agent-pac` (fork of vakovalskii/phantom-agent)
 - Remotes: `origin` = fork, `upstream` = original
-- Latest commit has `--repeat` and sweep script
-- Thinking toggle changes NOT yet committed
 
 ## Research Findings (from background agent)
 
@@ -124,7 +164,7 @@ uv run python main_v2.py t04 --repeat 3   # runs t04 x3 in parallel
 | NUM_PARALLEL | **Applied (4)** | Agent sweet spot is 2, but server supports 4 |
 | GPU_OVERHEAD | **Applied (128MB)** | Reclaims ~12GB from default 20% reserve |
 | num_ctx reduction | **Applied (8K)** | Down from 262K default |
-| Disable thinking | **Tested, not applied** | 9-13% speedup, risk not worth it |
+| Disable thinking | **Tested, toggle ready** | 23% speedup (reasoning tasks) via `reasoning_effort: "none"`. `/no_think` text hack was broken. |
 | MLX backend | **Not tested** | Issue #14442 reports problems with qwen3.5 35B MoE |
 | q4_0 KV cache | **Not tested** | More aggressive, noticeable quality loss at higher contexts |
 

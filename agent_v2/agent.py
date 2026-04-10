@@ -84,14 +84,17 @@ def create_agent(cfg: Config, temperature: float = 0.0) -> Agent[TaskContext]:
         model=cfg.model,
         openai_client=client,
     )
+    from agents.model_settings import Reasoning
+    reasoning = Reasoning(effort="none") if cfg.disable_thinking else None
     return Agent[TaskContext](
         name="PAC1-Agent",
-        instructions=get_system_prompt_with_skills(disable_thinking=cfg.disable_thinking),
+        instructions=get_system_prompt_with_skills(),
         model=model,
         tools=ALL_TOOLS,
         model_settings=ModelSettings(
             temperature=temperature,
             max_tokens=2048,
+            reasoning=reasoning,
         ),
     )
 
