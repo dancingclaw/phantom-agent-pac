@@ -166,7 +166,7 @@ async def _run_batch(
     return rows
 
 
-async def _run_benchmark(task_filter: list[str]) -> None:
+async def _run_benchmark(task_filter: list[str], *, repeat: int = 1) -> None:
     cfg = Config.from_env()
     agent = create_agent(cfg)
     harness = HarnessServiceClientSync(cfg.benchmark_host)
@@ -194,8 +194,9 @@ async def _run_benchmark(task_filter: list[str]) -> None:
     run_id: str | None = None
 
     if task_filter:
-        tasks = [(t.task_id, None) for t in res.tasks if t.task_id in set(task_filter)]
-        print(f"Playground mode: {len(tasks)} filtered tasks")
+        base = [(t.task_id, None) for t in res.tasks if t.task_id in set(task_filter)]
+        tasks = base * repeat
+        print(f"Playground mode: {len(base)} tasks x{repeat} = {len(tasks)} instances")
     else:
         run_response = await asyncio.to_thread(
             harness.start_run,
@@ -270,9 +271,15 @@ async def _run_benchmark(task_filter: list[str]) -> None:
 
 
 def main() -> None:
-    task_filter = sys.argv[1:]
+    args = sys.argv[1:]
+    repeat = 1
+    if "--repeat" in args:
+        idx = args.index("--repeat")
+        repeat = int(args[idx + 1])
+        args = args[:idx] + args[idx + 2:]
+    task_filter = args
     try:
-        asyncio.run(_run_benchmark(task_filter))
+        asyncio.run(_run_benchmark(task_filter, repeat=repeat))
     except ConnectError as exc:
         print(f"{CLI_RED}{exc.code}: {exc.message}{CLI_CLR}")
     except KeyboardInterrupt:
