@@ -309,7 +309,7 @@ async def _run_benchmark_async(run_id: str, task_filter: list[str] | None = None
         run.finished_at = time.time()
         run.status = RunStatus.DONE
 
-        if run.leaderboard_run_id and not cancel_event.is_set():
+        if run.leaderboard_run_id and not failed:
             await asyncio.to_thread(
                 harness.submit_run, SubmitRunRequest(run_id=run.leaderboard_run_id)
             )
