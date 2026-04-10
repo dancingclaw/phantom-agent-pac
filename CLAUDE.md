@@ -141,18 +141,43 @@ in grounding_refs (excluding README, AGENTS, docs, process files).
 - search_text limit=2000 for counting (files with 1000+ lines)
 - `--tensor-parallel-size 2 --quantization mxfp4 --max-num-seqs 16`
 
+## Ollama Server Configuration (M4 Max 64GB)
+
+Ollama runs under user `david`. Settings persisted via `launchctl setenv`:
+
+```bash
+launchctl setenv OLLAMA_FLASH_ATTENTION 1        # mandatory for KV cache quant
+launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0       # halves KV cache VRAM
+launchctl setenv OLLAMA_NUM_PARALLEL 4           # server-side parallel slots (default=1!)
+launchctl setenv OLLAMA_MAX_LOADED_MODELS 1      # all VRAM for one model
+launchctl setenv OLLAMA_GPU_OVERHEAD 134217728   # 128MB reserve
+```
+
+**After any reboot**, warm model with reduced context (default 262K is way too large):
+```bash
+curl http://localhost:11434/api/chat -d '{"model":"qwen3.5:35b-a3b","messages":[{"role":"user","content":"hi"}],"options":{"num_ctx":8192}}'
+```
+
+**Why these settings:**
+- Without `OLLAMA_NUM_PARALLEL > 1`, all concurrent requests are serialized
+- Without `OLLAMA_FLASH_ATTENTION=1`, KV cache quantization is silently ignored
+- 262K context uses ~6GB VRAM for KV cache; 8K uses ~0.1GB
+
+**Tested sweet spot:** `AGENT_CONCURRENCY=2` (0.052 tasks/s). Throughput drops at 3+.
+
 ## Environment Variables (.env file)
 
 | Var | Default | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | — | Model API key |
-| `OPENAI_BASE_URL` | — | API endpoint URL |
-| `MODEL_ID` | gpt-oss-120b | Model name |
+| `OPENAI_API_KEY` | — | Model API key (use `ollama` for local) |
+| `OPENAI_BASE_URL` | — | API endpoint URL (`http://127.0.0.1:11434/v1` for local) |
+| `MODEL_ID` | gpt-oss-120b | Model name (`qwen3.5:35b-a3b` for local) |
 | `BITGN_API_KEY` | — | Leaderboard key |
 | `BITGN_RUN_NAME` | neuraldeep gpt oss120b x2 4090(48gb) | Run name on leaderboard |
-| `AGENT_CONCURRENCY` | 10 | Parallel agents (slider up to 30) |
+| `AGENT_CONCURRENCY` | 10 | Parallel agents (**use 2 for local Ollama**) |
 | `AGENT_MAX_TURNS` | 50 | Max ReAct steps per task |
-| `AGENT_REQUEST_TIMEOUT` | 120 | LLM timeout (seconds) |
+| `AGENT_REQUEST_TIMEOUT` | 120 | LLM timeout (seconds, **use 300 for local**) |
+| `AGENT_DISABLE_THINKING` | false | Set `true` to disable thinking via `reasoning_effort: "none"` |
 
 ## Current Score: ~93% average, 100% best
 
