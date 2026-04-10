@@ -86,7 +86,7 @@ def create_agent(cfg: Config, temperature: float = 0.0) -> Agent[TaskContext]:
     )
     return Agent[TaskContext](
         name="PAC1-Agent",
-        instructions=get_system_prompt_with_skills(),
+        instructions=get_system_prompt_with_skills(disable_thinking=cfg.disable_thinking),
         model=model,
         tools=ALL_TOOLS,
         model_settings=ModelSettings(

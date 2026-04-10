@@ -16,6 +16,7 @@ class Config:
     max_turns: int
     concurrency: int
     request_timeout: float
+    disable_thinking: bool
 
     @classmethod
     def from_env(cls) -> Config:
@@ -30,4 +31,5 @@ class Config:
             max_turns=int(os.getenv("AGENT_MAX_TURNS", "50")),
             concurrency=int(os.getenv("AGENT_CONCURRENCY", "10")),
             request_timeout=float(os.getenv("AGENT_REQUEST_TIMEOUT", "120")),
+            disable_thinking=os.getenv("AGENT_DISABLE_THINKING", "").lower() == "true",
         )

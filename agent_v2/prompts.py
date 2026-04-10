@@ -16,10 +16,12 @@ def get_system_prompt() -> str:
 SYSTEM_PROMPT = get_system_prompt()
 
 
-def get_system_prompt_with_skills() -> str:
+def get_system_prompt_with_skills(*, disable_thinking: bool = False) -> str:
     """System prompt + available skills menu."""
     from .skills.registry import SKILL_REGISTRY
     base = get_system_prompt()
+    if disable_thinking:
+        base += "\n/no_think\n"
     lines = ["\n<AVAILABLE_SKILLS>",
              "Call get_skill_instructions(skill_id) to load full workflow before acting."]
     for sid, s in SKILL_REGISTRY.items():
