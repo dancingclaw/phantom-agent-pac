@@ -1,6 +1,9 @@
 """PAC1 Benchmark Runner v2 — OpenAI Agents SDK, batch execution, realtime logs."""
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import asyncio
 import json
 import sys
@@ -249,11 +252,18 @@ async def _run_benchmark(task_filter: list[str]) -> None:
     print(f"Total wall time: {wall}ms")
 
     if run_id is not None:
-        submit = await asyncio.to_thread(
-            harness.submit_run, SubmitRunRequest(run_id=run_id)
-        )
-        state = RunState.Name(submit.state) if isinstance(submit.state, int) else submit.state.name
-        print(f"Leaderboard: {state}")
+        for attempt in range(3):
+            try:
+                submit = await asyncio.to_thread(
+                    harness.submit_run, SubmitRunRequest(run_id=run_id)
+                )
+                state = RunState.Name(submit.state) if isinstance(submit.state, int) else submit.state.name
+                print(f"Leaderboard: {state}")
+                break
+            except Exception as e:
+                print(f"{CLI_RED}Submit attempt {attempt+1}/3 failed: {e}{CLI_CLR}")
+                if attempt < 2:
+                    await asyncio.sleep(2)
 
     path = _save_metrics(all_rows, final)
     print(f"Metrics saved: {path}")

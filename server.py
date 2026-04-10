@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent / ".env")
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 import asyncio
 import json
@@ -79,7 +79,7 @@ _runs: dict[str, BenchmarkRun] = {}
 _event_queues: dict[str, list[asyncio.Queue]] = {}
 _cfg: Config | None = None
 _agent = None
-_temperature: float = 1.0
+_temperature: float = 0.0
 
 
 def _get_cfg() -> Config:
@@ -309,10 +309,19 @@ async def _run_benchmark_async(run_id: str, task_filter: list[str] | None = None
         run.finished_at = time.time()
         run.status = RunStatus.DONE
 
-        if run.leaderboard_run_id and not failed:
-            await asyncio.to_thread(
-                harness.submit_run, SubmitRunRequest(run_id=run.leaderboard_run_id)
-            )
+        # Always submit leaderboard runs — even with partial failures
+        if run.leaderboard_run_id:
+            for attempt in range(3):
+                try:
+                    submit_resp = await asyncio.to_thread(
+                        harness.submit_run, SubmitRunRequest(run_id=run.leaderboard_run_id)
+                    )
+                    emitter("run_submitted", {"run_id": run.leaderboard_run_id, "attempt": attempt + 1})
+                    break
+                except Exception as submit_err:
+                    emitter("submit_error", {"error": str(submit_err)[:200], "attempt": attempt + 1})
+                    if attempt < 2:
+                        await asyncio.sleep(2)
 
         store.update_run(run_id, status="done", final_score=run.final_score, finished_at=run.finished_at)
 
@@ -368,7 +377,7 @@ def _run_to_dict(run: BenchmarkRun) -> dict:
 # ── FastAPI ─────────────────────────────────────────────────
 
 app = FastAPI(title="PAC1 Agent Dashboard API")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.on_event("startup")
@@ -410,7 +419,7 @@ class RunRequest(BaseModel):
 @app.get("/api/config")
 async def get_config():
     cfg = _get_cfg()
-    return {"model": cfg.model, "concurrency": cfg.concurrency, "max_turns": cfg.max_turns, "benchmark_id": cfg.benchmark_id, "temperature": _temperature, "openai_base_url": cfg.openai_base_url, "openai_api_key": cfg.openai_api_key}
+    return {"model": cfg.model, "concurrency": cfg.concurrency, "max_turns": cfg.max_turns, "benchmark_id": cfg.benchmark_id, "temperature": _temperature, "openai_base_url": cfg.openai_base_url, "openai_api_key": "***"}
 
 
 @app.put("/api/config/temperature")
@@ -429,8 +438,8 @@ async def get_llm_config():
     return {
         "model": cfg.model,
         "openai_base_url": cfg.openai_base_url,
-        "openai_api_key": cfg.openai_api_key,
-        "bitgn_api_key": cfg.bitgn_api_key or "",
+        "openai_api_key": "***",
+        "bitgn_api_key": "***",
     }
 
 
@@ -644,4 +653,4 @@ async def compare_runs(run_ids: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)

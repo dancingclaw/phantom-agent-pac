@@ -101,10 +101,10 @@ async def search_text(
     Args:
         pattern: Search pattern (supports regex, e.g. "blacklist", "email.*@example").
         root: File or directory to search in (default "/").
-        limit: Maximum results (1-2000). Use 1000+ for counting queries.
+        limit: Maximum results (1-1000). Use 500+ for counting queries.
     """
     ctx.context.telemetry.tool_calls += 1
-    return await ctx.context.runtime.search(pattern, root, min(limit, 2000))
+    return await ctx.context.runtime.search(pattern, root, min(limit, 1000))
 
 
 @function_tool

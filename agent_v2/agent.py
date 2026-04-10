@@ -78,7 +78,7 @@ def _get_client(cfg: Config) -> AsyncOpenAI:
     return _client
 
 
-def create_agent(cfg: Config, temperature: float = 1.0) -> Agent[TaskContext]:
+def create_agent(cfg: Config, temperature: float = 0.0) -> Agent[TaskContext]:
     client = _get_client(cfg)
     model = OpenAIChatCompletionsModel(
         model=cfg.model,
@@ -91,9 +91,114 @@ def create_agent(cfg: Config, temperature: float = 1.0) -> Agent[TaskContext]:
         tools=ALL_TOOLS,
         model_settings=ModelSettings(
             temperature=temperature,
-            max_tokens=4096,
+            max_tokens=2048,
         ),
     )
+
+
+# ── Phase 1: Fast gates for instant refusals ─────────────────────
+# Skip the ReAct loop for high-confidence refusal tasks.
+# Critical for 2h competition window with 100 tasks.
+
+# Skills that are refusal outcomes — if regex classifier picks these
+# with high confidence, we can short-circuit.
+_FAST_GATE_SKILLS = {
+    "security_denial": ("OUTCOME_DENIED_SECURITY", 0.90),
+    "unsupported_capability": ("OUTCOME_NONE_UNSUPPORTED", 0.85),
+    "clarification": ("OUTCOME_NONE_CLARIFICATION", 0.80),
+}
+
+
+async def _try_fast_gate(
+    match, context, task_id: str, on_event=None,
+) -> str | None:
+    """Try to short-circuit refusal tasks without entering the ReAct loop.
+
+    For unsupported tasks, checks workspace tree first — if the VM has
+    outbox/ or contacts/, the task might actually be supported.
+
+    Returns the answer result string if fast-gated, None if not.
+    """
+    from .skills.classifier import SkillMatch
+    from .runtime import AsyncPcmRuntime
+
+    skill_id = match.skill_id
+    confidence = match.confidence
+
+    runtime = AsyncPcmRuntime(context.runtime_url)
+
+    # Email tasks on VMs without outbox → unsupported (common fast-gate case)
+    if skill_id == "email_outbound":
+        tree_output = await runtime.tree("/", level=1)
+        if "outbox" not in tree_output.lower():
+            print(f"  {task_id} [FAST-GATE] email_outbound but no outbox/ — unsupported")
+            if on_event:
+                on_event("fast_gate", {"task_id": task_id, "skill": "email_outbound→unsupported", "outcome": "OUTCOME_NONE_UNSUPPORTED"})
+            context.completion_submitted = True
+            context.telemetry.tool_calls += 2
+            return await runtime.answer(
+                "This workspace does not have an outbox for sending email.",
+                "OUTCOME_NONE_UNSUPPORTED",
+                ["AGENTS.md"],
+            )
+        return None  # has outbox, let ReAct handle it
+
+    if skill_id not in _FAST_GATE_SKILLS:
+        return None
+
+    outcome, min_confidence = _FAST_GATE_SKILLS[skill_id]
+
+    if confidence < min_confidence:
+        return None
+
+    # For security denial — regex patterns are very specific, trust them
+    if skill_id == "security_denial":
+        print(f"  {task_id} [FAST-GATE] security_denial ({confidence:.0%}) — skipping ReAct loop")
+        if on_event:
+            on_event("fast_gate", {"task_id": task_id, "skill": skill_id, "outcome": outcome})
+        context.completion_submitted = True
+        context.telemetry.tool_calls += 1
+        return await runtime.answer(
+            "Task contains security markers (prompt injection / hostile instructions). Denied.",
+            outcome,
+            [],
+        )
+
+    # For unsupported — check workspace tree first
+    # Some VMs have outbox/ which makes email tasks supported
+    if skill_id == "unsupported_capability":
+        tree_output = await runtime.tree("/", level=1)
+        has_outbox = "outbox" in tree_output.lower()
+        has_contacts = "contacts" in tree_output.lower()
+        # If workspace has CRM-like structure, don't fast-gate — let ReAct handle it
+        if has_outbox or has_contacts:
+            print(f"  {task_id} [FAST-GATE] unsupported BUT workspace has outbox/contacts — skipping gate")
+            return None
+        print(f"  {task_id} [FAST-GATE] unsupported_capability ({confidence:.0%}) — no outbox/contacts, skipping ReAct")
+        if on_event:
+            on_event("fast_gate", {"task_id": task_id, "skill": skill_id, "outcome": outcome})
+        context.completion_submitted = True
+        context.telemetry.tool_calls += 2  # tree + answer
+        return await runtime.answer(
+            "This workspace does not support the requested capability.",
+            outcome,
+            ["AGENTS.md"],
+        )
+
+    # For clarification — trust the regex classifier
+    if skill_id == "clarification":
+        print(f"  {task_id} [FAST-GATE] clarification ({confidence:.0%}) — skipping ReAct loop")
+        if on_event:
+            on_event("fast_gate", {"task_id": task_id, "skill": skill_id, "outcome": outcome})
+        context.completion_submitted = True
+        context.telemetry.tool_calls += 1
+        return await runtime.answer(
+            "The request is ambiguous or incomplete. Please clarify.",
+            outcome,
+            [],
+        )
+
+    return None
 
 
 FORCE_TOOL_PROMPT = """The task was: {task_text}
@@ -169,6 +274,16 @@ async def run_task(
             "classifier": classifier_type,
         })
 
+    # ── Phase 1: Fast gates for instant refusals ──────────────
+    # Skip the expensive ReAct loop for tasks that are clearly refusals.
+    # Saves 1-5 min per refusal task — critical for 2h competition window.
+    fast_gate_result = await _try_fast_gate(
+        match, context, task_id, on_event,
+    )
+    if fast_gate_result is not None:
+        telemetry.finish()
+        return telemetry
+
     try:
         # Retry on ModelBehaviorError (Harmony corruption) or 0 tool calls
         from agents.exceptions import ModelBehaviorError
@@ -185,7 +300,7 @@ async def run_task(
                     run_config=RunConfig(
                         model_settings=ModelSettings(
                             temperature=agent.model_settings.temperature if agent.model_settings else 1.0,
-                            max_tokens=4096,
+                            max_tokens=2048,
                         ),
                     ),
                 )
@@ -237,7 +352,7 @@ async def run_task(
                 instructions="You must call submit_answer with the provided answer. Nothing else.",
                 model=agent.model,
                 tools=[submit_answer],
-                model_settings=ModelSettings(temperature=0.0, max_tokens=4096, tool_choice="required"),
+                model_settings=ModelSettings(temperature=0.0, max_tokens=2048, tool_choice="required"),
             )
             await Runner.run(
                 force_agent,
@@ -266,7 +381,7 @@ async def run_task(
                     instructions="Call submit_answer based on the task. Use OUTCOME_OK for normal tasks.",
                     model=agent.model,
                     tools=[submit_answer],
-                    model_settings=ModelSettings(temperature=0.0, max_tokens=4096, tool_choice="required"),
+                    model_settings=ModelSettings(temperature=0.0, max_tokens=2048, tool_choice="required"),
                 )
                 await Runner.run(
                     force_agent,
